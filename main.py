@@ -192,7 +192,7 @@ forcefield = 'data/chignolin_priors.yaml'
 psf = 'data/chignolin_ca_top.psf'
 exclusions = ('bonds')
 device = 'cpu' 
-# forceterms = ['Bonds','RepulsionCG','LJ'],
+# forceterms = ['Bonds','RepulsionCG'],
 forceterms = ['bonds','repulsioncg','lj']
 make_deltaforces(coords_npz, forces_npz, delta_forces_npz, forcefield, psf, exclusions, device, forceterms)
 
@@ -239,7 +239,92 @@ print(
 
 In the next step, we use coordinates and delta-forces to train the network.
 
-SchNet architecture, applied here, learns the features using continuous filter convolutions on a graph neural network and predicts the forces and energy of the system.
+SchNet architecture, applied here, learns the features using continuous filter convolutions on a graph neural network and predicts the forces 
+and energy of the system.
+
+A set of parameters in the configuration file train.yaml is listed here:
+
+```
+coords: "data/chignolin_ca_coords.npy"
+forces: "data/chignolin_ca_deltaforces.npy"
+embeddings: "data/chignolin_ca_embeddings.npy"
+log_dir: train_light
+num_epochs: 200
+batch_size: 1024
+lr: 0.0001
+lr_patience: 4
+lr_min: 1.e-06
+lr_factor: 0.8
+distributed_backend: dp
+gpus: 4
+num_nodes: 1
+num_workers: 8
+seed: 1
+eval_interval: 1
+save_interval: 1
+progress: True
+val_ratio: 0.05
+test_ratio: 0.1
+num_filters: 128
+num_gaussians: 150
+num_interactions: 3
+max_z: 100
+cutoff: 9
+```
+
+Now we will go through options in a configuration file:
+
+    training input files locations are defined in parameters: coords, forces and embeddings
+    log_dir - output folder
+    lr - initial value of learning rate
+    num_epochs - number of epochs run during the training
+    batch_size - batch size
+    lr - initial value of learning rate. The learning rate is optimized with torch.optim.lr_scheduler.ReduceLROnPlateau scheduler with parameters: lr_patience, lr_min and lr_factor
+    distributed_backend - specifies distributed_backend pytorch-ligtning. Here dp (Data Parallel) is adjusted for training on multiple-gpus (gpus) and 1 machine (num_nodes). Other options include:
+        Data Parallel (distributed_backend='dp')(multiple-gpus, 1 machine)
+        DistributedDataParallel (distributed_backend=’ddp’) (multiple-gpus across many machines (python script based)).
+        DistributedDataParallel (distributed_backend=’ddp_spawn’) (multiple-gpus across many machines (spawn based)).
+        DistributedDataParallel 2 (distributed_backend=’ddp2’) (DP in a machine, DDP across machines).
+        Horovod (distributed_backend=’horovod’) (multi-machine, multi-gpu, configured at runtime)
+    gpus - number of GPUs used in training. Specified as a number of required units (eg. 4) or a list of cuda devices (eg. `[0, 2, 3]')
+    num_nodes - number of machines used
+    num_workers - number of workers in data loader
+    seed for the calculation
+    eval_interval - evaluation interval
+    save_interval - saving interval
+    progress - Progress bar during batching
+    val_ratio - Percentual of validation set
+    test_ratio - Percentual of test set
+    Finally schnet-specific parameters:
+        num_filters
+        num_gaussians
+        num_interactions
+        max_z
+        cutoff
+
+Training is done using python script and can be run by a simple command:
+
+```
+mkdir train_light
+python $PATH/torchmd-net/scripts/light_train.py -c train.yaml
+```
+
+where $PATH is the path to your torchmd-net repo.
+
+The training saves 8 best epochs. The progress of the training is saved in TensorBoard session. 
+The training and validation curves for the training of full Chignolin dataset are presented here:
 """
 )
+
+
+
+df = pd.read_csv('data/train_out_data.csv')
+
+fig, ax = plt.subplots(nrows = 2, figsize = [8,8])
+df.plot(x = 'epoch', y = ['train_loss', 'val_loss'], ax = ax[0])
+ax[0].scatter([80], [df['val_loss'].loc[80]], s=200, c='r', marker=(5, 1), label='selected epoch')
+ax[0].set_ylabel('Loss')
+df.plot(x = 'epoch', y = 'lr', ax = ax[1])
+ax[1].set_ylabel('learning rate')
+
 
